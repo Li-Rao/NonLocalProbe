@@ -1,4 +1,8 @@
 # generate_benchmark_parallel.py
+"""
+Parallel benchmark data generation for comparing exact ED and DTWA methods.
+Generates local, power-law non-local, and truncated non-local QFI datasets.
+"""
 import os
 import json
 import time
@@ -14,11 +18,35 @@ from common import (
 )
 
 
-# -----------------------------
-# Small-N benchmark task
-# -----------------------------
+# =============================
+# Small-N Benchmark Task
+# =============================
 def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj, seed):
-    # ---------- local exact ----------
+    """
+    Single benchmark task computing QFI using both exact (ED) and DTWA methods.
+    
+    Computes:
+    - Local exact QFI
+    - Power-law probe exact ED QFI
+    - Truncated probe exact ED QFI
+    - Power-law probe DTWA QFI
+    - Truncated probe DTWA QFI
+    
+    Args:
+        alpha: Power-law exponent
+        N: System size (small N for exact ED)
+        eta: Power-law probe exponent
+        beta: Truncation exponent
+        t_points: Time evolution points
+        nphi_exact: Number of rotation angles for exact ED
+        nphi_dtwa: Number of rotation angles for DTWA
+        n_traj: Number of DTWA trajectories
+        seed: Random seed for DTWA
+        
+    Returns:
+        dict: Benchmark results for this parameter set
+    """
+    # ---------- Exact Local QFI ----------
     qfi_local = simulate_local_qfi(
         N=N,
         alpha=alpha,
@@ -26,7 +54,7 @@ def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj,
         nphi=nphi_exact,
     )
 
-    # ---------- power-law exact ----------
+    # ---------- Exact Power-Law Probe QFI (ED) ----------
     qfi_exact_power = simulate_qfi_k_2body_exact_smallN(
         N=N,
         alpha=alpha,
@@ -35,7 +63,7 @@ def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj,
         nphi=nphi_exact,
     )
 
-    # ---------- truncated exact ----------
+    # ---------- Exact Truncated Probe QFI (ED) ----------
     qfi_exact_trunc, R0 = simulate_qfi_truncated_2body_exact_smallN(
         N=N,
         alpha=alpha,
@@ -45,7 +73,7 @@ def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj,
         return_R0=True,
     )
 
-    # ---------- power-law DTWA ----------
+    # ---------- DTWA Power-Law Probe QFI ----------
     qfi_dtwa_power = simulate_qfi_k_2body(
         N=N,
         alpha=alpha,
@@ -56,7 +84,7 @@ def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj,
         seed=seed,
     )
 
-    # ---------- truncated DTWA ----------
+    # ---------- DTWA Truncated Probe QFI ----------
     qfi_dtwa_trunc, R0_dtwa = simulate_qfi_truncated_2body(
         N=N,
         alpha=alpha,
@@ -68,7 +96,7 @@ def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj,
         return_R0=True,
     )
 
-    # 正常情况下二者应一致；保留一下检查结果更稳妥
+    # Verify that R0 values are consistent between exact and DTWA methods
     if int(R0) != int(R0_dtwa):
         raise ValueError(
             f"R0 mismatch for N={N}, beta={beta}: exact={R0}, dtwa={R0_dtwa}"
@@ -88,9 +116,9 @@ def benchmark_task(alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj,
     }
 
 
-# -----------------------------
-# Main benchmark generator
-# -----------------------------
+# =============================
+# Main Benchmark Generator
+# =============================
 def generate_benchmark_parallel(
     alpha_values,
     N_values,
@@ -105,8 +133,26 @@ def generate_benchmark_parallel(
     output_dir="data",
     output_name="benchmark",
 ):
+    """
+    Generate comprehensive benchmark dataset comparing exact and DTWA methods.
+    
+    Args:
+        alpha_values: List of power-law exponent values
+        N_values: List of system sizes
+        eta_values: List of power-law probe exponent values
+        beta_values: List of truncation exponent values
+        t_points: Array of time evolution points
+        nphi_exact: Number of rotation angles for exact ED
+        nphi_dtwa: Number of rotation angles for DTWA
+        n_traj: Number of DTWA trajectories
+        seed: Random seed for reproducibility
+        n_jobs: Number of parallel jobs
+        output_dir: Output directory for results
+        output_name: Name prefix for output files
+    """
     os.makedirs(output_dir, exist_ok=True)
 
+    # Generate all benchmark task combinations
     tasks = [
         (alpha, N, eta, beta, t_points, nphi_exact, nphi_dtwa, n_traj, seed)
         for alpha in alpha_values
@@ -118,10 +164,12 @@ def generate_benchmark_parallel(
     print("=== Generating benchmark data (parallel) ===")
     print(f"Total tasks: {len(tasks)}")
 
+    # Execute all benchmark tasks in parallel
     results = Parallel(n_jobs=n_jobs)(
         delayed(benchmark_task)(*task) for task in tasks
     )
 
+    # Prepare comprehensive results dictionary
     payload = {
         "dataset_name": output_name,
         "case": "benchmark_dual_nonlocal_plus_local",
@@ -145,6 +193,7 @@ def generate_benchmark_parallel(
         "results": results,
     }
 
+    # Save compressed numpy archive
     np.savez_compressed(
         f"{output_dir}/{output_name}.npz",
         alpha_values=np.array(alpha_values, dtype=float),
@@ -155,18 +204,19 @@ def generate_benchmark_parallel(
         results=np.array(results, dtype=object),
     )
 
+    # Save JSON metadata and results
     with open(f"{output_dir}/{output_name}.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
     print(f"Saved benchmark dataset to {output_dir}/{output_name}.npz and .json")
 
 
-# -----------------------------
-# Example usage
-# -----------------------------
+# =============================
+# Example Usage / Entry Point
+# =============================
 if __name__ == "__main__":
     alpha_values = [0.5]
-    N_values = [12,14]
+    N_values = [12, 14]
     eta_values = [0.2]
     beta_values = [0.8]
     t_points = np.linspace(0.0, 2.0, 81)
@@ -189,4 +239,4 @@ if __name__ == "__main__":
     )
 
     end = time.time()
-    print(f"程序运行时间: {end - start:.4f} 秒")
+    print(f"Program execution time: {end - start:.4f} seconds")

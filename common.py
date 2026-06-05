@@ -4,16 +4,23 @@ import numpy as np
 
 
 # ============================================================
-# Basic geometry / normalization
+# Basic Geometry and Normalization Utilities
 # ============================================================
 
 def prep_normalization_1d(alpha: float, N: int) -> float:
     """
     1D normalization convention:
-        N_alpha = N^(1-alpha), alpha < 1
-        N_alpha = 1,           alpha > 1
-
-    We intentionally do not treat alpha = 1 here.
+        N_alpha = N^(1-alpha)  for alpha < 1
+        N_alpha = 1            for alpha > 1
+    
+    Note: alpha = 1 is excluded by design and will raise an error.
+    
+    Args:
+        alpha: Power-law exponent
+        N: System size
+        
+    Returns:
+        float: Normalization factor for the given alpha and N
     """
     if np.isclose(alpha, 1.0):
         raise ValueError("alpha = 1 is excluded in this setup.")
@@ -45,8 +52,19 @@ def coupling_matrix_ising_1d(N: int, alpha: float) -> np.ndarray:
 
 def make_trajectory_groups(n_traj: int, n_groups: int, rng: np.random.Generator):
     """
-    Randomly split trajectories into n_groups groups.
-    Returns a list of index arrays.
+    Randomly partition trajectories into n_groups groups for bootstrap analysis.
+    Returns a list of index arrays where empty groups are filtered out.
+    
+    Args:
+        n_traj: Total number of trajectories
+        n_groups: Desired number of groups
+        rng: NumPy random generator instance
+        
+    Returns:
+        list: List of index arrays, one per group (excluding empty groups)
+        
+    Raises:
+        ValueError: If n_groups < 2 or n_groups > n_traj
     """
     if n_groups <= 1:
         raise ValueError("n_groups must be >= 2.")
@@ -56,31 +74,38 @@ def make_trajectory_groups(n_traj: int, n_groups: int, rng: np.random.Generator)
     perm = rng.permutation(n_traj)
     groups = np.array_split(perm, n_groups)
 
-    # avoid empty groups
+    # Avoid empty groups
     groups = [g for g in groups if len(g) > 0]
     return groups
 
 # ============================================================
-# Local probe: exact 2301-style implementation
+# Local Probe: Exact 2301-style Implementation
 # ============================================================
 def exact_local_probe_covariances(
     J: np.ndarray,
     t: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Return (Cyy, Cyz) matrices for the x-polarized initial state evolved
+    Return (Cyy, Cyz) covariance matrices for x-polarized initial state evolved
     under the commuting Ising ZZ Hamiltonian, following the exact formulas
-    used in Ref. 2301 (their Eqs. S33-S34).
-
-    Here J is the preparation coupling matrix with
-        H_e = sum_{i<j} J_ij S_i^z S_j^z .
+    from Ref. 2301 (their Eqs. S33-S34).
+    
+    Here J is the preparation coupling matrix with:
+        H_e = sum_{i<j} J_ij S_i^z S_j^z
+    
+    Args:
+        J: Preparation coupling matrix
+        t: Evolution time
+        
+    Returns:
+        tuple: (Cyy, Cyz) covariance matrices
     """
     N = J.shape[0]
     Cyy = np.zeros((N, N), dtype=float)
     Cyz = np.zeros((N, N), dtype=float)
 
-    # diagonal entries are not used in the 2301 off-diagonal sums
-    # but we keep them zero explicitly for clarity.
+    # Diagonal entries are not used in the 2301 off-diagonal formula summations,
+    # but we explicitly set them to zero for clarity.
     np.fill_diagonal(Cyy, 0.0)
     np.fill_diagonal(Cyz, 0.0)
 
@@ -120,13 +145,24 @@ def exact_local_probe_qfi_vs_phi(
     Compute the exact local-probe QFI F_Q(phi) using the 2301 formula:
         F_Q(t) = N + max_phi sum_{i != j}
                  [sin^2(phi) Cyy_ij + 0.5 sin(2phi) Cyz_ij]
+    
     and return (fq_phi, best_idx).
+    
+    Args:
+        Cyy: Covariance matrix Cyy
+        Cyz: Covariance matrix Cyz
+        phi_grid: Array of rotation angles to search over
+        
+    Returns:
+        tuple: (fq_phi, best_idx) where fq_phi is the QFI values for each phi,
+               and best_idx is the index of the maximum value
     """
     N = Cyy.shape[0]
     fq_phi = np.zeros_like(phi_grid, dtype=float)
 
-    sum_cyy_offdiag = np.sum(Cyy)   # diagonal entries are zero
-    sum_cyz_offdiag = np.sum(Cyz)   # diagonal entries are zero
+    # Sum off-diagonal elements (diagonal entries are zero by construction)
+    sum_cyy_offdiag = np.sum(Cyy)
+    sum_cyz_offdiag = np.sum(Cyz)
 
     for m, phi in enumerate(phi_grid):
         s = np.sin(phi)
@@ -164,7 +200,7 @@ def simulate_local_qfi(
 
 
 # ============================================================
-# DTWA for nonlocal probes
+# Dynamical Time Warping Approximation (DTWA) for Non-local Probes
 # ============================================================
 
 def dtwa_sample_initial_spins(
@@ -173,9 +209,17 @@ def dtwa_sample_initial_spins(
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    DTWA sampling for |+x>^{⊗N}:
+    DTWA sampling for initial state |+x>^{⊗N}:
       sx = +1
       sy, sz = ±1 independently
+    
+    Args:
+        n_traj: Number of trajectories
+        N: System size
+        rng: NumPy random generator instance
+        
+    Returns:
+        tuple: (sx, sy, sz) spin component arrays of shape (n_traj, N)
     """
     sx = np.ones((n_traj, N), dtype=float) * 0.5
 
@@ -193,11 +237,19 @@ def evolve_dtwa_ising_exact_times(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Exact DTWA time evolution for commuting Ising dynamics.
-
+    
     Since h_i = sum_j J_ij sz_j is constant along each trajectory:
         sx_i(t) = sx_i(0) cos(2 h_i t) - sy_i(0) sin(2 h_i t)
         sy_i(t) = sy_i(0) cos(2 h_i t) + sx_i(0) sin(2 h_i t)
         sz_i(t) = sz_i(0)
+    
+    Args:
+        J: Coupling matrix
+        t_points: Array of evolution times
+        sx0, sy0, sz0: Initial spin components of shape (n_traj, N)
+        
+    Returns:
+        tuple: (sx_t, sy_t, sz_t) spin components at all times of shape (n_t, n_traj, N)
     """
     fields = sz0 @ J.T   # shape (n_traj, N)
     angles = fields[None, :, :] * t_points[:, None, None]
@@ -213,13 +265,21 @@ def evolve_dtwa_ising_exact_times(
 
 
 # ============================================================
-# Probe matrices
+# Probe Matrix Functions
 # ============================================================
 
 def probe_matrix_powerlaw(N: int, eta: float) -> np.ndarray:
     """
-    Power-law probe:
-        g_ij = 1 / |i-j|^eta
+    Power-law probe interaction matrix:
+        g_ij = 1 / |i-j|^eta  for i != j
+        g_ii = 0
+    
+    Args:
+        N: System size
+        eta: Power-law exponent
+        
+    Returns:
+        ndarray: Probe matrix of shape (N, N)
     """
     dist = chain_distance_matrix_open(N)
     with np.errstate(divide="ignore"):
