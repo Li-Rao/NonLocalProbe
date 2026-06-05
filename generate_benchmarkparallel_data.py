@@ -130,7 +130,7 @@ def generate_benchmark_parallel(
     n_traj=2000,
     seed=12345,
     n_jobs=8,
-    output_dir="data",
+    output_dir="DataF",
     output_name="benchmark",
 ):
     """
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         n_traj=2000,
         seed=12345,
         n_jobs=12,
-        output_dir="data",
+        output_dir="DataF",
         output_name="benchmark",
     )
 

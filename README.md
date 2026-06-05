@@ -19,7 +19,7 @@ jupyter notebook Plot.ipynb
 **Data generation:**
 - `generate_case1_data.py` → `DataF/case1_powerlaw_scan.npz`
 - `generate_case2_data.py` → `DataF/case2_truncated_scan.npz`
-- `generate_benchmarkparallel_data.py` → `DataF/benchmark.npz` (note: script saves to `data/`, move or symlink to `DataF/`)
+- `generate_benchmarkparallel_data.py` → `DataF/benchmark.npz`
 
 **Common utilities:**
 - `common.py` - Core QFI functions (local exact, DTWA, ED)
@@ -75,7 +75,6 @@ Benchmark results similar but with both exact and DTWA curves.
 
 ## Notes
 
-- Benchmark generated to `data/` by default - copy/link to `DataF/` for Plot.ipynb
 - Error bars computed from 20 trajectory groups
 - All simulations use fixed seeds (reproducible)
 - Parallelized with joblib (default 45 jobs)
